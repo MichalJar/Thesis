@@ -1,0 +1,322 @@
+\documentclass[11pt]{mgr}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[polish]{babel}
+\usepackage{graphicx}
+\usepackage{float}
+\begin{document}
+
+\author{Michał Jarmakowicz}
+\supervisor{Prof. dr. hab. inż. Michał Woźniak}
+\field{Informatyka (INF)}
+\specialisation{Systemy informatyki w medycynie (IMT)}
+\title{ Metody hierarchicznego grupowania zmiennych strumieni danych}
+\engtitle{ Hierarchical clustering methods of drifted data streams}
+\maketitle
+\newpage
+\tableofcontents
+\newpage
+\chapter{Wstęp}
+
+W dzisiejszych czasach coraz częściej spotykamy się z potrzebą przetwarzania i analizowania strumieni danych. Logi z aplikacji mobilnych, zapisy interakcji na portalach internetowych, dane z sensorów, urządzeń IoT, laboratoriów naukowych i kamer miejskich - wszystkie te informacje mogą wymagać przetwarzania w czasie rzeczywistym. Często też z uwagi na ich ogrom możemy się spotkać z ograniczeniami nie tylko czasowymi, ale też pamięciowymi - nie jesteśmy w stanie przechować fizycznie wszystkich przychodzących do nas danych. Mimo tego chcielibyśmy wyciągnąć z nich jakieś wnioski.
+
+Jedną z metod analizy danych jest grupowanie (klasteryzacja), czyli podział zbioru na skupiska podobnych do siebie obiektów. Jedną z efektywniejszych (ale i trudniejszych obliczeniowo) odmian grupowania jest grupowanie hierarchiczna, którego wynikiem jest nie sam podział zbioru na klastry,ale hierarchia takich podziałów (w postaci dendrogramu).
+
+Niestety algorytmy grupowania hierarchicznego są sekwencyjne - w każdym kroku modyfikują one dane, na których operują. Dlatego też bardzo trudny jest podział obliczeń algorytmu na niezależne obliczenia częściowe, operujące na osobnych, rozłącznych podzbiorach; potrzebuje on w każdej iteracji dostępu do wszystkich obiektów zbioru wejściowego.
+
+Taki właśnie podział wydaje się niezbędny, jeżeli chcemy myśleć o \textbf{hierarchicznym grupowaniu strumieni danych}. Istnieją jednak metody (aproksymacyjne i dokładne) które na to pozwalają.
+
+\chapter{Problematyka}\label{problematyka}
+Ten rozdział zawiera:
+\begin{itemize}
+\item opis zagadnienia analizy strumieni danych,
+\item wymogi stawiane algorytmom grupowania strumieni danych,
+\item definicje, podział i właściwości metod hierarchicznego grupowania danych
+\end{itemize}
+\section{Strumienie danych}\label{strumienie-danych-1}
+
+Zgodnie z \cite{silva2013data}, strumieniem danych nazywamy bardzo liczną sekwencję \(S\) przychodzących w czasie obiektów \(x_{1}, x_{2}, ... , x_{N}\), gdzie ilość tych obiektów jest potencjalnie nieskończona.
+
+W problemie analizy strumienia danych zakłada się, że ilość obiektów jest zbyt duża, by móc je fizycznie przechować. Limitem jest też czas, potrzebny do aktualizacji modelu opisującego dane - algorytm musi zdążyć to zrobić przed nadejściem kolejnego obiektu. 
+
+Dlatego też algorytmy analizy strumienia danych projektuje się z myślą o następujących uwarunkowaniach: 
+\begin{itemize}
+\item Obiekty przychodzą do systemu w sposób ciągły i muszą być na bieżąco obsługiwane.
+\item Nie ma kontroli nad kolejnością, z jaką przychodzą obiekty.
+\item Rozmiar strumienia danych jest potencjalnie nieskończony.
+\item Obiekty muszą być usuwane z pamięci po tym, jak zostały przetworzone (w praktyce dopuszczalne jest przechowywanie pewnej liczby obiektów - wówczas implementowany jest mechanizm zapominania obiektów).
+\item Mechanizm generujący obiekty jest nieznany i potencjalnie niestacjonarny.
+\end{itemize}
+
+W przypadku grupowania strumieni algorytm musi jeszcze:
+
+\begin{itemize}
+\item Zapewniać aktualne wyniki, szybko i inkrementacyjnie aktualizując je o nowe obiekty.
+\item Adaptować model do zmiany strumienia danych (pojawiające się i znikające klastry).
+\item Skalować się do liczby przychodzących obiektów.
+\item Generować model (rezultat) którego rozmiar nie wzrasta wraz z liczbą przetworzonych obiektów.
+\item Umieć klasteryzować dane o różnych typach.
+\end{itemize}
+
+W rzeczywistości nie zawsze wszystkie założenia są spełnione. Jednak
+podczas projektowania algorytmu grupowania strumienia danych muszą
+one być brane pod uwagę.
+
+Istnieje wiele algorytmów grupowania strumieni, zaprojektowanych z myślą o zupełnie różnych wymaganiach. W \cite{silva2013data} zaproponowano ich taksonomię względem:
+\begin{itemize}
+\item problemu grupowania - grupowanie obiektów lub atrybutów
+\item kształtu grupowania - np. sferycznego, kołowego.
+\item rodzaju struktury danych przechowujących wynik grupowania;
+\item algorytmu docelowego - k-średnich, DBSCAN i.t.d,
+\item typu okienkowania - przesuwany, rozłączny i.t.d.
+\end{itemize}
+
+\section{Grupowanie hierarchiczne}\label{grupowanie-hierarchiczne}
+
+Wynikiem grupowania hierarchicznego nazywamy sekwencję podziałów powstałych w wyniku działania następujacej procedury \(p\):
+
+Mamy zbiór obiektów \(X\) i funkcję odległości \(d\) pomiędzy zbiorami
+(nazywanymi klastrami).
+
+\begin{enumerate}
+\item
+  Dzielimy \(X\) na \(X_{l}\) i \(X_{r}\) w taki sposób, że
+  \(d( X_{l}, X_{r})\) jest maksymalne.
+\item
+  Zapisujemy podział.
+\item
+  Rekurencyjne wywołujemy \(p(X_{l})\) i \(p(X_{r})\).
+\end{enumerate}
+
+Procedura kończy się, gdy pozostaną tylko zbiory (klastry) z tylko jednym obiektem. Wynikiem jest zapis podziałów - \textbf{dendrogram}.
+
+Algorytm dokładny, realizujący powyższą procedurę, ma złożoność \(O(2^n)\), gdzie \(n\) to liczba obiektów. Dlatego też stosuje się albo aproksymacyjne szukanie wystarczająco dobrych podziałów, albo \textbf{podejście aglomeracyjne}.
+
+Procedura grupowania hierarchicznego aglomeracyjnego jest następująca:
+
+Mamy zbiór klastrów \(X_{1}, X_{2},...,X_{n}\) zawierającym \textbf{po jednym obiekcie} i funkcję odległości \(d\) pomiędzy klastrami.
+
+\begin{enumerate}
+\item
+  W zbiorze klastrów szukamy takiej pary \(X_{i}\) i \(X_{j}\), że
+  \(d(X_{i},X_{j})\) jest najmniejsze.
+\item
+  Scalamy \(X_{i}\) i \(X_{j}\) w nowy klaster \(X'\) i włączamy go do
+  zbioru.
+\item
+  Jeżeli w zbiorze znajduje się już tylko \textbf{jeden klaster
+  zawierający wszystkie obiekty}, przerywamy procedurę. Jeżeli nie,
+  wracamy do 1.
+\end{enumerate}
+
+Bezpośrednia implementacja z definicji ma złożoność \(O(n^3)\), jednak w
+zależności od funkcji \(d\) możliwe są rozwiązania od \(O(n^2)\) \cite{sibson1973slink} do
+\(O(n^2log(n))\) \cite{day1984efficient}.
+
+Algorytmy aglomeracyjnego grupowania hierarchicznego możemy względem używanej funkcji odległości \(d\) podzielić na następujące grupy:
+
+\begin{enumerate}
+\item
+  Połączeniowe (eng. Link)
+\item
+  Metryczne (eng. Metric)
+\end{enumerate}
+
+Algorytmy typu \emph{link} są niezależne od zdefiniowanej funkcji
+odległości pomiędzy obiektami. Np. dla algorytmu typu single link
+odległość pomiędzy dwoma klastrami to odległość pomiędzy ich dwoma
+najbliższymi punktami. Z kolei dla \emph{average-link} odległość ta to
+średnia wszystkich odległości pomiędzy obiektami jednego zbioru a
+drugiego. Oznacza to, że dla metod \emph{link} możemy pogrupować
+dowolne obiekty; warunkiem jest zdefiniowanie odpowiedniej funkcji
+odległości pomiędzy elementami.
+
+Z kolei metody metryczne \emph{Metric} zakładają, że grupujemy
+wektory liczb rzeczywistych.
+
+\chapter{Istniejące rozwiązania}
+W ramach pracy magisterskiej interesują nas algorytmy grupujące obiekty (nie atrybuty) o oknie czasowym przesuwanym (nie rozłącznym), których model opisuje grupowanie hierarchiczne obiektów ze strumienia. 
+\par 
+Wśród metod zaprezentowanych w \cite{silva2013data} jedynym algorytmem docelowo hierarchicznym był ODAC, przeznaczonym do grupowania atrybutów. 
+\par 
+Jednak metody oparte o \textit{feature vector} (CF) i drzewa indeksowe (mimo że kształty otrzymywanych klastrów nie są arbitralne) mogą być interpretowane jako aproksymacje grupowania hierarchicznego. Algorytmy te to:
+\begin{itemize}
+\item BIRCH \cite{zhang1996birch},
+\item CluStream \cite{aggarwal2003framework},
+\item ClusTree \cite{kranen2009self}.
+\end{itemize}
+Z nich najbardziej interesuje nas zaproponowany w 2009 roku ClusTree.
+\par 
+
+Grupuje on wektory liczb rzeczywistych, używając euklidesowej miary odległości. Jego działanie opiera się na wykorzystaniu drzewa indeksowego, podobnego do R-Tree, zawierającego rekordy \emph{CF} (eng. Cluster Feature) - zaproponowanego pierwotnie w algorytmie BIRCH \cite{zhang1996birch}. Są to agregacje obiektów tworzących mikro-klaster:
+\[CF = (n,LS,SS) \]
+
+Gdzie \(n\) to liczba z-agregowanych obiektów, \(LS\) to suma liniowa obiektów:
+
+\[LS = \sum_{k=0}^{n} x_k = \sum_{k=0}^{n} [x_k^{(0)},x_k^{(1)},...,x_k^{(d)}] \]
+
+gdzie \(d\) to liczba wymiarów. \(SS\) to suma kwadratowa:
+\[SS = \sum_{k=0}^{n} x_k^2 = \sum_{k=0}^{n} [x_k^{(0)} x_k^{(0)},x_k^{(1)} x_k^{(1)} ,..., x_k^{(d)} x_k^{(d)} ] \]
+
+Obydwie te wartości można aktualizować inkrementacyjnie. Wykorzystuje się je do obliczania wartości opisujących położenie i rozmiar klastra - centroidu i wariancji:
+
+\[ \bar x = \frac{LS}{n} \]
+
+\[ \sigma = SS^2 - 2 \frac{LS^2}{n} \]
+
+Drzewo \textbf{CF} wygląda następująco:
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.4]{CFtree.png}
+\caption{Drzewo CF}
+\end{figure}
+
+Każdy węzeł drzewa składa się z dwóch lub więcej wektorów CF. Wyjątkiem są liście (węzły końcowe) które mogą zawierać tylko jeden CF. Każdy CF w korzeniu (węźle początkowym) i węzłach pośredniczących wskazuje na jakiś węzeł potomny. CF w węźle rodzicielskim jest agregacją (sumą) wszystkich CF w węźle potomnym, na który wskazuje.
+\par 
+Aktualizowanie drzewa o nowy obiekt wygląda następująco: Zaczynając od korzenia wyszukiwane jest CF o centroidzie najbliższym do nowego obiektu. Wówczas przechodzi się do węzła wskazywanego przez ten CF. Trwa to do momentu, aż dojdziemy do liścia. Wówczas wyszukujemy najbliższy CF i jeżeli odległość pomiędzy CF a nowym obiektem jest poniżej wartości granicznej, to dodajemy go do CF. Jeżeli nie, obiekt inicjuje nowy CF z $n=1$.
+\par
+Jeżeli w węźle końcowym nie ma już miejsca na nowy CF (liczba CF przekroczyła wartość graniczną) to węzeł dzielony jest węzły potomne. Wówczas staje się nowym węzłem pośredniczącym, a węzły potomne - nowymi liśćmi.
+\par 
+Zaprezentowana struktura nie spełnia jeszcze jednego wymagania stawianego algorytmom grupowania strumieni - zdolności do utrzymywania aktualnego modelu, w którym stare obiekty są usuwane lub ich wpływ na model jest minimalizowany.
+\par 
+W tym celu wykorzystuje się eksponencjalną funkcję zaniku względem czasu:
+
+$$ w( \Delta t ) = \beta^{- \lambda \Delta t} $$
+
+Wówczas wartości CF zależne od czasu definiowane są następująco:
+$$ n_{(t)} = \sum_{i=1}^{n}w(t-ts_i)$$
+$$ LS_{(t)} = \sum_{i=1}^{n}w(t-ts_i)x_i$$
+$$ SS_{(t)} = \sum_{i=1}^{n}w(t-ts_i)x_i^2$$
+
+gdzie $n$ jest (niepoddaną działaniu funkcji zaniku) liczbą zagregowanych obiektów, $ts_i$ to punkt w czasie, w której $x_i$ został dodany do CF, a $t$ czasem aktualnym.
+Wówczas, zakładając, że w przedziale $[t,t+\Delta t]$ nie przyszedł żaden obiekt, możemy zapisać następującą własność:
+
+$$ CF_{t + \Delta t} = w(\Delta t) CF_{t} $$
+
+W momencie gdy przychodzi nowy obiekt $x_i$ w momencie czasowym $t_i$, wówczas przed agregacją następuje uaktualnienie wszystkich CF w węźle. Więcej na temat tego sposobu aktualizowania modelu względem czasu w \cite{kranen2009self}.
+
+\chapter{Algorytm pod-grafów}\label{metoda-podgrafuxf3w}
+
+Metoda ta została zaprezentowana w serii artykułów \cite{jin2013disc}, \cite{jin2015scalable} i \cite{jin2015incremental} pod różnymi nazwami (wynikającymi z różnych zastosowań i implementacji) jako sposób na efektywne rozproszenie obliczeń grupowania hierarchicznej aglomeracyjnej typu Single-Link na klastrze obliczeniowym.
+
+Artykuły zostały zainspirowane \cite{lattanzi2011filtering}, gdzie została zaprezentowana skuteczna metoda obliczania minimalnego drzewa rozpinającego dla zbioru krawędzi rozproszonych po pamięci klastra obliczeniowego Big Data.
+
+Algorytm pod-grafów opiera się na następujących właściwościach problemu grupowania single-link:
+
+\begin{itemize}
+\item
+  Obliczanie grupowania single-link (dendrogramu) dla zbioru obiektów
+  \(x_{1}, x_{2},...,x_{n} \in X\) jest równoznaczne z szukaniem
+  minimalnego drzewa rozpinającego dla grafu pełnego \(G\), gdzie
+  wierzchołkami są elementy zbioru \(X\), a krawędziami - odległości
+  pomiędzy nimi.
+\item
+  Jeżeli mamy graf \(G_{s}\), który jest podgrafem \(G\), to znaczy
+  \(G_{s} \in G\), to jeżeli krawędź \(e_{i}\) \textbf{należy} do
+  \(G_{s}\) i \textbf{nie należy} do MST \(G_{s}\) to \textbf{nie
+  należy} również do MST \(G\).
+\end{itemize}
+
+MST oznacza \emph{minimal spanning tree} (minimalne drzewo rozpinające).
+Druga właściwość wynika z prawa cyklu w grafie.
+
+Optymalny sekwencyjny algorytm  grupowania hierarchicznego typu single
+link to \textbf{zmodyfikowany algorytm Prim} o złożoności czasowej \(O(n^2)\) i
+pamięciowej \(O(n)\), wyliczający w locie wagi krawędzi (odległości)
+pomiedzy wierzchołkami (elementami).
+
+Otrzymuje on na wejściu zbiór obiektów i funkcję odległości pomiędzy
+nimi, na wyjściu zwracając zbiór krawędzi \(E\) obliczonego minimalnego
+drzewa rozpinającego.
+
+\textbf{Metoda podgrafów} zastosowana do zrównoleglania i rozpraszania
+obliczeń wykorzystuje algorytm zmodyfikowanego Prima. Działa ona
+następująco:
+
+\begin{enumerate}
+\item
+  Dzieli wejściowy zbiór obiektów \(X\) na równe co do ilości obiektów
+  rozłączne podzbiory \(X_{1}, X_{2},...,X_{k}\).
+\item
+  Tworzy wszystkie możliwe pary \(P_{i,j} = (X_{i},X_{j})\) takie, że \( i \geq j \)
+\item
+  Rozsyła \(P_{i,j}\) równomiernie po klastrze, gdzie są interpretowane
+  jako grafy. Odpowiednio \(P_{i,j}, i \ne j\) to graf dwudzielny
+  \(G_{i,j}\), z kolei \(P_{i,i}\) to graf pełny \(G_{i}\)
+\item
+  Dla każdego \(G_{i,j}\) i \(G_{i}\) wywoływany jest
+  \textbf{zmodyfikowany Prim}. Uzyskiwane są w ten sposób zbiory
+  krawędzi \(E_{i,j}\) i \(E_{i}\).
+\item
+  Krawędzie te są scalane w jeden zbiór \(E\), na którym wywoływany jest
+  algorytm Kruskala. W ten sposób uzyskujemy zbiór krawędzi dla \(MST\)
+  całego grafu pełnego \(G\) reprezentujący zbiór \(X\). Tym samym
+  uzyskujemy dendrogram klasteryzacji hierarchicznej aglomeracyjnej dla
+  zbioru \(X\)
+\end{enumerate}
+
+Łatwo jest pokazać, że takie rozproszenie jest bardzo efektywne (
+praktycznie liniowa skalowalność względem liczby jednostek
+obliczeniowych), gdyż przeważająca większość krawędzi zostanie usunięta
+rozproszonym etapie nr.4 . Nie leży to jednak w zakresie tego raportu.
+
+Dotychczas metoda nie została dostosowana do klasteryzowania strumieni
+danych. Nie wymaga to jednak dużych modyfikacji.
+
+\chapter{Cel pracy}\label{cel-pracy}
+
+Celem pracy magisterskiej jest opisanie i adaptacja \textbf{metody podgrafów} do grupowania hierarchicznego strumieni danych i porównanie adaptacji z już obecnymi rozwiązaniami. Z powodu braku odpowiednich bibliotek rozwiązania te też będą musiały być zaimplementowane.
+
+Właściwości algorytmów będą analizowane teoretycznie i eksperymentalnie. Badanymi właściwościami będą:
+
+\begin{itemize}
+\item
+  Zależności czasowe - od liczby obiektów, wielkości okna.
+\item
+  Zależności pamięciowe - od liczby obiektów, wielkości okna,.
+\item
+  Adaptacja do zmian liczby obiektów w strumieniu danych.
+\item
+  Zdolność aktualizacji modelu (tryb okna, usuwanie przestarzałych
+  obiektów i klastrów).
+\item
+  Zdolność ``wykrywania'' (pokazywania w wyliczanym modelu) nowych
+  klastrów.
+\item
+  Dokładność aproksymacji (porównywana względem wyników działania
+  algorytmów offline).
+\end{itemize}
+
+\textbf{(Opcjonalnie)} zostanie podjęta próba wykorzystania algorytmu dokładnego metody podgrafów do aproksymowania innych niż single-link metod pomiaru odległości pomiędzy klastrami. 
+
+\chapter{Zakres pracy}\label{zakres-pracy}
+
+Zaimplementowane i przeanalizowane eksperymentalnie i teoretycznie zostaną następujące algorytmy:
+
+\begin{itemize}
+\item
+  \textbf{Clustree}.
+\item
+  \textbf{Metoda podgrafów} (adaptacja do problemu strumieni danych).
+\end{itemize}
+
+Algorytmy będą zaimplementowane w języku Python, wraz z frameworkiem testowym i algorytmami grupowania pracującymi w trybie online, służącymi do porównywania dokładności aproksymacji. Napisane zostaną własne generatory danych, jak i będą użyte dane rzeczywiste wykorzystywane wpodobnych eksperymentach.
+
+\section{Wkład własny}\label{wkux142ad-wux142asny}
+
+Metoda podgrafów wymaga adaptacji do problemów klasteryzacji strumienia danych. Powinny być zaimplementowane mechanizmy usuwania i dodawania nowych zbiorów obiektów. Ponadto powinny być rozważone następujące modyfikacje:
+\begin{itemize}
+\item
+  Scalanie wielu obiektów w jeden (adaptacja do zmian natężenia
+  strumienia)
+\item
+  Obsługa przepełnionego bufora wejściowego (adaptacja do zmian
+  natężenia strumienia)
+\end{itemize}
+
+Implementacja obsługi przerwania w procesie aktualizacji modelu (taka jaka istnieje w ClusTree) nie jest przewidywana.
+
+\bibliographystyle{plain}
+\bibliography{b.bib}
+\end{document}
